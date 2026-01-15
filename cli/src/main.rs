@@ -1,5 +1,16 @@
-use compiler::compile;
+mod args;
+mod driver;
 
-fn main() {
-    compile("Hello, World!");
+use crate::args::Args;
+use crate::driver::{assemble, compile, preprocess};
+use clap::Parser;
+
+fn main() -> std::io::Result<()> {
+    let args = Args::parse();
+
+    preprocess(&args.file_path);
+    compile(&args);
+    assemble(&args.file_path);
+
+    Ok(())
 }
