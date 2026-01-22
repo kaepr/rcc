@@ -22,6 +22,19 @@ Run `just` to see list of all available commands. **Requires the setup to be com
 
 ```shell
 just 
+
+Available recipes:
+    # Builds rcc binary.
+    # Usage: just build <debug|release> (defaults to debug)
+    build mode="debug"
+    check-test-compiler-setup # Verify all requirements for test_comiler are met
+    clean                     # Clean build artifacts
+    default
+    # Run's rcc binary.
+    # Usage: just run <debug|info|other log levels>)
+    run level +args
+    show-prefix               # Show's the command prefix for all shell commands
+    test-suite +args          # Run's tests from the book's test suite. Pass in chapter and stage flags.
 ```
 
 ## Setup
@@ -59,14 +72,17 @@ PATH_TO_BINARY='./bin'
 ```
 
 ```shell
-$ just build 
-./bin/rcc 
+just build 
+
+./bin/rcc # binary called `rcc` created
 ```
 
 ## Instructions
 
 ```shell
-$ just run debug ./tests/main.c
+just build
+
+just run debug ./tests/main.c
 ```
 
 Run the book's test suite.
