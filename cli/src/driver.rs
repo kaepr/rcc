@@ -1,4 +1,5 @@
 use crate::args::Args;
+use compiler::lexer;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -25,9 +26,26 @@ pub fn preprocess(input: &PathBuf) {
     }
 }
 
-pub fn compile(_args: &Args) {
-    println!("TODO: compiler implementation here. Write to a .s file");
-    println!("Exit early as specified in the args.");
+pub fn compile(args: &Args) {
+    let mut file_path = args.file_path.clone();
+    file_path.set_extension("i");
+    let source = fs::read_to_string(file_path).unwrap();
+
+    println!("file contents: {:?}", source);
+
+    if args.lex {
+        return;
+    }
+
+    if args.parse {
+        return;
+    }
+
+    if args.codegen {
+        return;
+    }
+
+    // write to .s file
 }
 
 pub fn assemble(input: &PathBuf) {
