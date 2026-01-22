@@ -1,5 +1,6 @@
 use crate::args::Args;
-use compiler::lexer;
+use compiler::lexer::{self, LexerError};
+use log::debug;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -18,9 +19,9 @@ pub fn preprocess(input: &PathBuf) {
         .expect("failed to run gcc");
 
     if status.success() {
-        println!("Successfully preprocessed to: {:?}", output);
+        debug!("Successfully preprocessed to: {:?}", output);
     } else {
-        eprintln!("Failed to preprocess file.");
+        debug!("Failed to preprocess file.");
         let _ = cleanup(input);
         std::process::exit(1);
     }
@@ -31,7 +32,22 @@ pub fn compile(args: &Args) {
     file_path.set_extension("i");
     let source = fs::read_to_string(file_path).unwrap();
 
-    println!("file contents: {:?}", source);
+    log::debug!("file contents: {:?}", source);
+    let _ = cleanup(&args.file_path);
+
+    let tokens = lexer::lex(&source);
+    let errors: Vec<&LexerError> = tokens.iter().filter_map(|t| t.as_ref().err()).collect();
+
+    for token in &tokens {
+        log::debug!("{:?}", token);
+    }
+
+    if !errors.is_empty() {
+        for error in errors {
+            log::debug!("{:?}", error);
+        }
+        std::process::exit(1);
+    }
 
     if args.lex {
         return;
@@ -61,11 +77,11 @@ pub fn assemble(input: &PathBuf) {
         .status()
         .expect("failed to run gcc");
 
+    let _ = cleanup(input);
     if status.success() {
-        println!("Successfully generated executable.");
+        log::debug!("Successfully generated executable.");
     } else {
-        eprintln!("Failed to generate executable.");
-        let _ = cleanup(input);
+        log::debug!("Failed to generate executable.");
         std::process::exit(1);
     }
 }
@@ -75,17 +91,17 @@ fn cleanup(path: &PathBuf) -> std::io::Result<()> {
     path.set_extension("i");
     if path.exists() {
         fs::remove_file(&path)?;
-        println!(".i file cleaned up !")
+        log::debug!(".i file cleaned up !")
     } else {
-        println!("No .i file to cleanup !")
+        log::debug!("No .i file to cleanup !")
     }
 
     path.set_extension("s");
     if path.exists() {
         fs::remove_file(&path)?;
-        println!(".s file cleaned up !")
+        log::debug!(".s file cleaned up !")
     } else {
-        println!("No .s file to cleanup !")
+        log::debug!("No .s file to cleanup !")
     }
 
     Ok(())

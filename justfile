@@ -18,31 +18,41 @@ prefix := if os == "macos" {
 default:
     @just --list
 
-# Show's the command prefix for all shell commands
+[doc("""Show's the command prefix for all shell commands""")]
 show-prefix:
     {{ prefix }} 'uname -m'
 
-# Verify all requirements for test_comiler are met
+[doc("""Verify all requirements for test_comiler are met""")]
 check-test-compiler-setup:
    {{ prefix }} '{{ test_compiler_bin }} --check-setup'
 
-# Clean build artifacts
+[doc("""Clean build artifacts""")]
 clean:
     @echo "Cleaning /target directory ..."
     rm -rf target
-    @echo "Cleaning /bin directory ..."
-    mkdir -p bin
-    rm -rf bin
+    @echo "Cleaning {{ path_to_binary }} directory ..."
+    rm -rf {{ path_to_binary }}
+    rm -rf {{ path_to_binary }}/
 
-# Build `rcc` binary. Modes={debug, release}
-cli-build mode="debug":
-    @echo "Building rcc cli ..."
+[doc("""
+Builds rcc binary.
+Usage: just build <debug|release> (defaults to debug)
+""")]
+build mode="debug":
+    @echo "Building cli binary ..."
     cargo build {{ if mode == "release" { "--release" } else { "" } }} -p cli
-    @echo "Copying to ./bin/cli ..."
-    mkdir -p bin
-    cp {{ if mode == "release" { "./target/release/cli" } else { "./target/debug/cli" } }} {{ path_to_binary }}
+    @echo "Copying to {{ path_to_binary }} ..."
+    mkdir -p {{ path_to_binary }}
+    cp {{ if mode == "release" { "./target/release/cli" } else { "./target/debug/cli" } }} {{ path_to_binary }}/rcc
+
+[doc("""
+Run's rcc binary.
+Usage: just run <debug|info|other log levels>)
+""")]
+run level +args:
+    {{ prefix }} 'RUST_LOG={{ level }} {{ path_to_binary}}/rcc {{ args }}'
 
 # Run's tests from the book's test suite. Pass in chapter and stage flags.
 test-suite +args:
     @echo "Running tests for : {{ args }}"
-    {{ prefix }} '{{ test_compiler_bin }} {{ path_to_binary }} {{ args }}'
+    {{ prefix }} '{{ test_compiler_bin }} {{ path_to_binary }}/rcc {{ args }}'
