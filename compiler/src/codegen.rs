@@ -12,13 +12,13 @@ pub type Identifer<'src> = &'src str;
 
 #[derive(Debug, PartialEq)]
 pub struct Program<'src> {
-    function_def: FunctionDef<'src>,
+    pub function_def: FunctionDef<'src>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionDef<'src> {
-    name: Identifer<'src>,
-    instructions: Vec<Instruction>,
+    pub name: Identifer<'src>,
+    pub instructions: Vec<Instruction>,
 }
 
 #[derive(Debug, PartialEq)]

@@ -1,6 +1,5 @@
 use crate::args::Args;
-use compiler::{FINAL_STAGE, Stage, StageOutput, compile as rcc_compiler};
-use log::debug;
+use compiler::{Stage, StageOutput, compile as rcc_compiler};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -19,9 +18,9 @@ pub fn preprocess(input: &PathBuf) {
         .expect("failed to run gcc");
 
     if status.success() {
-        debug!("Successfully preprocessed to: {:?}", output);
+        log::debug!("Successfully preprocessed to: {:?}", output);
     } else {
-        debug!("Failed to preprocess file.");
+        log::error!("Failed to preprocess file.");
         let _ = cleanup(input);
         std::process::exit(1);
     }
@@ -40,10 +39,10 @@ fn stage(args: &Args) -> Stage {
         return Stage::Codegen;
     }
 
-    FINAL_STAGE
+    Stage::Emit
 }
 
-fn process_output(output: StageOutput) {
+fn process_output(output: StageOutput) -> Option<String> {
     match output {
         StageOutput::Lex(tokens) => {
             let (tokens, errors) =
@@ -65,33 +64,53 @@ fn process_output(output: StageOutput) {
             }
         }
         StageOutput::Parse(ast) => match ast {
-            Ok(ast) => log::debug!("{ast:?}"),
+            Ok(ast) => log::debug!("\n{ast:?}"),
             Err(e) => {
                 log::debug!("{e:?}");
                 std::process::exit(1);
             }
         },
         StageOutput::Codegen(ast) => match ast {
-            Ok(ast) => log::debug!("{ast:?}"),
+            Ok(ast) => log::debug!("\n{ast:?}"),
+            Err(e) => {
+                log::debug!("{e:?}");
+                std::process::exit(1);
+            }
+        },
+        StageOutput::Emit(assembly) => match assembly {
+            Ok(assembly) => {
+                log::debug!("\n{}", assembly);
+                return Some(assembly);
+            }
             Err(e) => {
                 log::debug!("{e:?}");
                 std::process::exit(1);
             }
         },
     }
+
+    None
 }
 
 pub fn compile(args: &Args) {
     let mut file_path = args.file_path.clone();
     file_path.set_extension("i");
-    let source = fs::read_to_string(file_path).unwrap();
+    let source = fs::read_to_string(&file_path).unwrap();
 
     log::debug!("file contents: {:?}", source);
     let _ = cleanup(&args.file_path);
 
     let stage = stage(args);
     let output = rcc_compiler(&source, stage);
-    process_output(output);
+    let output = process_output(output);
+
+    if let Some(output) = output {
+        file_path.set_extension("s");
+        match fs::write(file_path, output) {
+            Ok(_) => log::info!("wrote to .s file"),
+            Err(_) => log::error!("failed to write to .s file"),
+        }
+    }
 }
 
 pub fn assemble(input: &PathBuf) {
@@ -111,7 +130,7 @@ pub fn assemble(input: &PathBuf) {
     if status.success() {
         log::debug!("Successfully generated executable.");
     } else {
-        log::debug!("Failed to generate executable.");
+        log::error!("Failed to generate executable.");
         std::process::exit(1);
     }
 }
