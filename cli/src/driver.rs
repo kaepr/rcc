@@ -1,6 +1,7 @@
 use crate::args::Args;
-use compiler::lexer::{self, LexerError};
+use compiler::{FINAL_STAGE, Stage, StageOutput, compile as rcc_compiler};
 use log::debug;
+use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -27,6 +28,46 @@ pub fn preprocess(input: &PathBuf) {
     }
 }
 
+fn stage(args: &Args) -> Stage {
+    if args.lex {
+        return Stage::Lex;
+    }
+
+    if args.parse {
+        return Stage::Parse;
+    }
+
+    if args.codegen {
+        return Stage::Codegen;
+    }
+
+    FINAL_STAGE
+}
+
+fn process_errors<T, E>(input: Vec<Result<T, E>>)
+where
+    E: Error,
+{
+    let errors: Vec<_> = input.iter().filter_map(|r| r.as_ref().err()).collect();
+    if !errors.is_empty() {
+        errors.iter().for_each(|e| log::debug!("{:?}", e));
+        std::process::exit(1);
+    }
+}
+
+fn process_output(output: StageOutput) {
+    match output {
+        StageOutput::Lex(tokens) => {
+            tokens
+                .iter()
+                .filter(|t| t.is_ok())
+                .for_each(|t| log::debug!("{:?}", t));
+
+            process_errors(tokens);
+        }
+    }
+}
+
 pub fn compile(args: &Args) {
     let mut file_path = args.file_path.clone();
     file_path.set_extension("i");
@@ -35,33 +76,9 @@ pub fn compile(args: &Args) {
     log::debug!("file contents: {:?}", source);
     let _ = cleanup(&args.file_path);
 
-    let tokens = lexer::lex(&source);
-    let errors: Vec<&LexerError> = tokens.iter().filter_map(|t| t.as_ref().err()).collect();
-
-    for token in &tokens {
-        log::debug!("{:?}", token);
-    }
-
-    if !errors.is_empty() {
-        for error in errors {
-            log::debug!("{:?}", error);
-        }
-        std::process::exit(1);
-    }
-
-    if args.lex {
-        return;
-    }
-
-    if args.parse {
-        return;
-    }
-
-    if args.codegen {
-        return;
-    }
-
-    // write to .s file
+    let stage = stage(args);
+    let output = rcc_compiler(&source, stage);
+    process_output(output);
 }
 
 pub fn assemble(input: &PathBuf) {
