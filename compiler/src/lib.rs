@@ -1,4 +1,7 @@
 use lexer::{LexError, Token, lex};
+use parser::{ParseError, Program};
+
+use crate::parser::parse;
 
 pub mod lexer;
 pub mod parser;
@@ -12,14 +15,15 @@ pub enum Stage {
 
 pub const FINAL_STAGE: Stage = Stage::Codegen;
 
-pub enum StageOutput<'a> {
-    Lex(Vec<Result<Token<'a>, LexError>>),
+pub enum StageOutput<'src> {
+    Lex(Vec<Result<Token<'src>, LexError>>),
+    Parse(Result<Program<'src>, ParseError>),
 }
 
 pub fn compile<'a>(source: &'a str, stage: Stage) -> StageOutput<'a> {
     match stage {
         Stage::Lex => StageOutput::Lex(lex(source)),
-        Stage::Parse => todo!(),
+        Stage::Parse => StageOutput::Parse(parse(lex(source).into_iter().flatten().collect())),
         Stage::Codegen => todo!(),
     }
 }

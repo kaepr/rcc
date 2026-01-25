@@ -1,7 +1,6 @@
 use crate::args::Args;
 use compiler::{FINAL_STAGE, Stage, StageOutput, compile as rcc_compiler};
 use log::debug;
-use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -44,27 +43,34 @@ fn stage(args: &Args) -> Stage {
     FINAL_STAGE
 }
 
-fn process_errors<T, E>(input: Vec<Result<T, E>>)
-where
-    E: Error,
-{
-    let errors: Vec<_> = input.iter().filter_map(|r| r.as_ref().err()).collect();
-    if !errors.is_empty() {
-        errors.iter().for_each(|e| log::debug!("{:?}", e));
-        std::process::exit(1);
-    }
-}
-
 fn process_output(output: StageOutput) {
     match output {
         StageOutput::Lex(tokens) => {
-            tokens
-                .iter()
-                .filter(|t| t.is_ok())
-                .for_each(|t| log::debug!("{:?}", t));
+            let (tokens, errors) =
+                tokens
+                    .into_iter()
+                    .fold((Vec::new(), Vec::new()), |(mut ts, mut es), token| {
+                        match token {
+                            Ok(t) => ts.push(t),
+                            Err(e) => es.push(e),
+                        }
+                        (ts, es)
+                    });
 
-            process_errors(tokens);
+            tokens.iter().for_each(|t| log::debug!("{t:?}"));
+
+            if !errors.is_empty() {
+                errors.iter().for_each(|e| log::debug!("{e:?}"));
+                std::process::exit(1);
+            }
         }
+        StageOutput::Parse(ast) => match ast {
+            Ok(ast) => log::debug!("{ast:?}"),
+            Err(e) => {
+                log::debug!("{e:?}");
+                std::process::exit(1);
+            }
+        },
     }
 }
 
