@@ -3,6 +3,7 @@ use parser::{ParseError, Program};
 
 use crate::parser::parse;
 
+pub mod codegen;
 pub mod lexer;
 pub mod parser;
 
@@ -23,7 +24,14 @@ pub enum StageOutput<'src> {
 pub fn compile<'a>(source: &'a str, stage: Stage) -> StageOutput<'a> {
     match stage {
         Stage::Lex => StageOutput::Lex(lex(source)),
-        Stage::Parse => StageOutput::Parse(parse(lex(source).into_iter().flatten().collect())),
+        Stage::Parse => {
+            let tokens = lex(source)
+                .into_iter()
+                .map(|t| t.expect("found error while lexing"))
+                .collect();
+
+            StageOutput::Parse(parse(tokens))
+        }
         Stage::Codegen => todo!(),
     }
 }
