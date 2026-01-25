@@ -2,7 +2,7 @@ use logos::{Lexer, Logos};
 use thiserror::Error;
 
 #[derive(Default, Clone, PartialEq, Debug, Error)]
-pub enum LexerError {
+pub enum LexError {
     #[default]
     #[error("unknown character or sequence")]
     UnknownToken,
@@ -10,15 +10,15 @@ pub enum LexerError {
     InvalidIdentifier,
 }
 
-fn invalid_identifier<'a>(_: &mut Lexer<'a, Token<'a>>) -> Result<Token<'a>, LexerError> {
-    Err(LexerError::InvalidIdentifier)
+fn invalid_identifier<'a>(_: &mut Lexer<'a, Token<'a>>) -> Result<Token<'a>, LexError> {
+    Err(LexError::InvalidIdentifier)
 }
 
 #[derive(Logos, Debug, PartialEq, Clone, Copy)]
 #[logos(skip r"[ \t\n\f\r]+")]
 #[logos(skip r"//.*")] // single line comments
 #[logos(skip r"/\*([^*]|\*[^/])*\*/")] // multi line comments
-#[logos(error = LexerError)]
+#[logos(error = LexError)]
 pub enum Token<'a> {
     #[token("int")]
     Int,
@@ -44,7 +44,7 @@ pub enum Token<'a> {
     InvalidIdentifier,
 }
 
-pub fn lex<'a>(source: &'a str) -> Vec<Result<Token<'a>, LexerError>> {
+pub fn lex<'a>(source: &'a str) -> Vec<Result<Token<'a>, LexError>> {
     let lexer = Token::lexer(source);
     lexer.collect()
 }
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn unknown() {
-        assert_eq!(lex("λ"), vec![Err(LexerError::UnknownToken)])
+        assert_eq!(lex("λ"), vec![Err(LexError::UnknownToken)])
     }
 
     #[test]
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn invalid_identifer() {
-        assert_eq!(lex("1foo"), vec![Err(LexerError::InvalidIdentifier)]);
-        assert_eq!(lex("123foo"), vec![Err(LexerError::InvalidIdentifier)]);
+        assert_eq!(lex("1foo"), vec![Err(LexError::InvalidIdentifier)]);
+        assert_eq!(lex("123foo"), vec![Err(LexError::InvalidIdentifier)]);
     }
 }

@@ -1,4 +1,4 @@
-use lexer::{LexerError, Token, lex};
+use lexer::{LexError, Token, lex};
 
 pub mod lexer;
 pub mod parser;
@@ -13,7 +13,7 @@ pub enum Stage {
 pub const FINAL_STAGE: Stage = Stage::Codegen;
 
 pub enum StageOutput<'a> {
-    Lex(Vec<Result<Token<'a>, LexerError>>),
+    Lex(Vec<Result<Token<'a>, LexError>>),
 }
 
 pub fn compile<'a>(source: &'a str, stage: Stage) -> StageOutput<'a> {
