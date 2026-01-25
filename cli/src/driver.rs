@@ -71,6 +71,13 @@ fn process_output(output: StageOutput) {
                 std::process::exit(1);
             }
         },
+        StageOutput::Codegen(ast) => match ast {
+            Ok(ast) => log::debug!("{ast:?}"),
+            Err(e) => {
+                log::debug!("{e:?}");
+                std::process::exit(1);
+            }
+        },
     }
 }
 

@@ -1,7 +1,6 @@
+use codegen::{CodegenError, codegen};
 use lexer::{LexError, Token, lex};
-use parser::{ParseError, Program};
-
-use crate::parser::parse;
+use parser::{ParseError, Program, parse};
 
 pub mod codegen;
 pub mod lexer;
@@ -19,6 +18,7 @@ pub const FINAL_STAGE: Stage = Stage::Codegen;
 pub enum StageOutput<'src> {
     Lex(Vec<Result<Token<'src>, LexError>>),
     Parse(Result<Program<'src>, ParseError>),
+    Codegen(Result<codegen::Program<'src>, CodegenError>),
 }
 
 pub fn compile<'a>(source: &'a str, stage: Stage) -> StageOutput<'a> {
@@ -32,6 +32,14 @@ pub fn compile<'a>(source: &'a str, stage: Stage) -> StageOutput<'a> {
 
             StageOutput::Parse(parse(tokens))
         }
-        Stage::Codegen => todo!(),
+        Stage::Codegen => {
+            let tokens = lex(source)
+                .into_iter()
+                .map(|t| t.expect("found error while lexing"))
+                .collect();
+            let ast = parse(tokens).expect("found error while parsing");
+
+            StageOutput::Codegen(codegen(ast))
+        }
     }
 }
