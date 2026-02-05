@@ -17,7 +17,7 @@ fn main() -> std::io::Result<()> {
     preprocess(&args.file_path);
     compile(&args);
 
-    if args.lex || args.codegen || args.parse {
+    if args.lex || args.codegen || args.parse || args.tacky {
         return Ok(());
     }
 

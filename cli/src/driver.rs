@@ -39,6 +39,10 @@ fn stage(args: &Args) -> Stage {
         return Stage::Codegen;
     }
 
+    if args.tacky {
+        return Stage::Tacky;
+    }
+
     Stage::Emit
 }
 
@@ -64,6 +68,13 @@ fn process_output(output: StageOutput) -> Option<String> {
             }
         }
         StageOutput::Parse(ast) => match ast {
+            Ok(ast) => log::debug!("\n{ast:?}"),
+            Err(e) => {
+                log::debug!("{e:?}");
+                std::process::exit(1);
+            }
+        },
+        StageOutput::Tacky(ast) => match ast {
             Ok(ast) => log::debug!("\n{ast:?}"),
             Err(e) => {
                 log::debug!("{e:?}");

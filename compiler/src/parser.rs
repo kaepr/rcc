@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::iter::Peekable;
 use std::marker::PhantomData;
 
@@ -17,9 +18,11 @@ pub enum ParseError {
     InvalidInteger { int: String },
     #[error("expected eof, found: {found}")]
     ExpectedEof { found: String },
+    #[error("malformed expression found: {found}")]
+    MalformedExpression { found: String },
 }
 
-pub type Identifer<'src> = &'src str;
+pub type Identifer<'src> = Cow<'src, str>;
 
 #[derive(Debug, PartialEq)]
 pub struct Program<'src> {
@@ -38,8 +41,15 @@ pub enum Statement {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum UnaryOperator {
+    Complement,
+    Negate,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Expr {
-    Constant(usize),
+    Constant(isize),
+    Unary(UnaryOperator, Box<Expr>),
 }
 
 struct Parser<'src, I>
@@ -90,18 +100,36 @@ where
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        match self.tokens.next() {
-            Some(Token::Constant(val)) => match val.parse::<usize>() {
-                Ok(val) => Ok(Expr::Constant(val)),
-                Err(_e) => Err(ParseError::InvalidInteger {
-                    int: val.to_string(),
-                }),
-            },
-            Some(t) => Err(ParseError::UnexpectedToken {
-                expected: "Token::Constant(usize)".into(),
-                found: format!("{:?}", t),
+        let token = self.tokens.peek().ok_or(ParseError::UnexpectedEof)?.clone();
+
+        match token {
+            Token::Constant(val) => {
+                self.take_one();
+
+                match val.parse::<usize>() {
+                    Ok(val) => Ok(Expr::Constant(
+                        val.try_into().expect("should be representable in isize"),
+                    )),
+                    Err(_e) => Err(ParseError::InvalidInteger {
+                        int: val.to_string(),
+                    }),
+                }
+            }
+            Token::BitwiseComplement | Token::Negation => {
+                self.take_one();
+                let operator: UnaryOperator = token.into();
+                let expr = self.parse_expr()?;
+                Ok(Expr::Unary(operator, Box::new(expr)))
+            }
+            Token::OpenParen => {
+                self.take_one();
+                let expr = self.parse_expr()?;
+                self.expect(Token::CloseParen)?;
+                Ok(expr)
+            }
+            _ => Err(ParseError::MalformedExpression {
+                found: format!("{:?}", token),
             }),
-            None => Err(ParseError::UnexpectedEof),
         }
     }
 
@@ -118,9 +146,13 @@ where
         })
     }
 
+    fn take_one(&mut self) -> Token<'src> {
+        self.tokens.next().unwrap()
+    }
+
     fn expect_identifier(&mut self) -> Result<Identifer<'src>, ParseError> {
         match self.tokens.next() {
-            Some(Token::Identifier(ident)) => Ok(ident),
+            Some(Token::Identifier(ident)) => Ok(ident.into()),
             Some(t) => Err(ParseError::UnexpectedToken {
                 expected: "Token::Identifier(ident)".into(),
                 found: format!("{:?}", t),
@@ -135,6 +167,16 @@ where
                 found: format!("{:?}", t),
             }),
             None => Ok(()),
+        }
+    }
+}
+
+impl From<Token<'_>> for UnaryOperator {
+    fn from(value: Token<'_>) -> Self {
+        match value {
+            Token::BitwiseComplement => UnaryOperator::Complement,
+            Token::Negation => UnaryOperator::Negate,
+            _ => unreachable!(),
         }
     }
 }
@@ -164,7 +206,7 @@ mod tests {
             ast,
             Program {
                 function_def: FunctionDef {
-                    name: "main",
+                    name: "main".into(),
                     body: Statement::Return(Expr::Constant(0))
                 }
             }

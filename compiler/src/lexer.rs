@@ -1,4 +1,5 @@
 use logos::{Lexer, Logos};
+use std::borrow::Cow;
 use thiserror::Error;
 
 #[derive(Default, Clone, PartialEq, Debug, Error)]
@@ -14,7 +15,7 @@ fn invalid_identifier<'a>(_: &mut Lexer<'a, Token<'a>>) -> Result<Token<'a>, Lex
     Err(LexError::InvalidIdentifier)
 }
 
-#[derive(Logos, Debug, PartialEq, Clone, Copy)]
+#[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(skip r"[ \t\n\f\r]+")]
 #[logos(skip r"//.*")] // single line comments
 #[logos(skip r"/\*([^*]|\*[^/])*\*/")] // multi line comments
@@ -26,6 +27,12 @@ pub enum Token<'a> {
     Void,
     #[token("return")]
     Return,
+    #[token("--")]
+    Decrement,
+    #[token("~")]
+    BitwiseComplement,
+    #[token("-")]
+    Negation,
     #[token("(")]
     OpenParen,
     #[token(")")]
@@ -36,10 +43,10 @@ pub enum Token<'a> {
     CloseBrace,
     #[token(";")]
     Semicolon,
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice())]
-    Identifier(&'a str),
-    #[regex(r"[0-9]+", |lex| lex.slice())]
-    Constant(&'a str),
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| Cow::Borrowed(lex.slice()))]
+    Identifier(Cow<'a, str>),
+    #[regex(r"[0-9]+", |lex| Cow::Borrowed(lex.slice()))]
+    Constant(Cow<'a, str>),
     #[regex(r"[0-9]+[a-zA-Z_][a-zA-Z0-9_]*", invalid_identifier)]
     InvalidIdentifier,
 }
@@ -80,13 +87,13 @@ mod tests {
             2; } "),
             vec![
                 Ok(Token::Int),
-                Ok(Token::Identifier("main")),
+                Ok(Token::Identifier("main".into())),
                 Ok(Token::OpenParen),
                 Ok(Token::Void),
                 Ok(Token::CloseParen),
                 Ok(Token::OpenBrace),
                 Ok(Token::Return),
-                Ok(Token::Constant("2")),
+                Ok(Token::Constant("2".into())),
                 Ok(Token::Semicolon),
                 Ok(Token::CloseBrace),
             ]

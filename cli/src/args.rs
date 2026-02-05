@@ -14,6 +14,10 @@ pub struct Args {
     #[arg(long)]
     pub parse: bool,
 
+    /// Runs tacky. Will not emit any files.
+    #[arg(long)]
+    pub tacky: bool,
+
     /// Runs codegen. Will not emit any files.
     #[arg(long)]
     pub codegen: bool,
