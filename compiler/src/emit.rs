@@ -1,4 +1,4 @@
-use crate::codegen::{FunctionDef, Instruction, Operand, Program, UnaryOperator};
+use crate::codegen::{BinaryOperator, FunctionDef, Instruction, Operand, Program, UnaryOperator};
 use std::borrow::Cow;
 use thiserror::Error;
 
@@ -28,11 +28,15 @@ fn platform_suffix() -> String {
 }
 
 fn emit_operand<'src>(operand: Operand<'src>) -> String {
+    type RegisterType = crate::codegen::Register;
+
     match operand {
         Operand::Imm(v) => format!("${}", v),
         Operand::Reg(register) => match register {
-            crate::codegen::Register::AX => format!("%eax"),
-            crate::codegen::Register::R10 => format!("%r10d"),
+            RegisterType::AX => format!("%eax"),
+            RegisterType::DX => format!("%edx"),
+            RegisterType::R10 => format!("%r10d"),
+            RegisterType::R11 => format!("%r11d"),
         },
         Operand::Stack(stack_loc) => format!("{stack_loc}(%rbp)"),
         _ => unreachable!(),
@@ -43,6 +47,14 @@ fn emit_unary_operator(op: UnaryOperator) -> String {
     match op {
         UnaryOperator::Neg => format!("negl"),
         UnaryOperator::Not => format!("notl"),
+    }
+}
+
+fn emit_binary_operator(op: BinaryOperator) -> String {
+    match op {
+        BinaryOperator::Add => format!("addl"),
+        BinaryOperator::Sub => format!("subl"),
+        BinaryOperator::Mult => format!("imull"),
     }
 }
 
@@ -57,6 +69,18 @@ fn emit_instruction(instruction: Instruction) -> String {
             emit_unary_operator(operator),
             emit_operand(operand)
         ),
+        Instruction::Binary {
+            operator,
+            operand1,
+            operand2,
+        } => format!(
+            "{}    {}, {}",
+            emit_binary_operator(operator),
+            emit_operand(operand1),
+            emit_operand(operand2),
+        ),
+        Instruction::Idiv(operand) => format!("idivl    {}", emit_operand(operand)),
+        Instruction::Cdq => format!("cdq"),
         Instruction::AllocateStack(stack_loc) => format!("subq    ${}, %rsp", stack_loc.abs()),
     }
 }

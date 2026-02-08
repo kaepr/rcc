@@ -5,6 +5,8 @@ use std::marker::PhantomData;
 use crate::lexer::Token;
 use thiserror::Error;
 
+const MIN_PREC: usize = 0;
+
 #[derive(Default, Clone, PartialEq, Debug, Error)]
 pub enum ParseError {
     #[default]
@@ -20,6 +22,8 @@ pub enum ParseError {
     ExpectedEof { found: String },
     #[error("malformed expression found: {found}")]
     MalformedExpression { found: String },
+    #[error("malformed factor")]
+    MalformedFactor,
 }
 
 pub type Identifer<'src> = Cow<'src, str>;
@@ -47,9 +51,19 @@ pub enum UnaryOperator {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Constant(isize),
     Unary(UnaryOperator, Box<Expr>),
+    Binary(BinaryOperator, Box<Expr>, Box<Expr>),
 }
 
 struct Parser<'src, I>
@@ -94,12 +108,12 @@ where
 
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         self.expect(Token::Return)?;
-        let return_val = self.parse_expr()?;
+        let return_val = self.parse_expr(MIN_PREC)?;
         self.expect(Token::Semicolon)?;
         Ok(Statement::Return(return_val))
     }
 
-    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    fn parse_factor(&mut self) -> Result<Expr, ParseError> {
         let token = self.tokens.peek().ok_or(ParseError::UnexpectedEof)?.clone();
 
         match token {
@@ -118,19 +132,39 @@ where
             Token::BitwiseComplement | Token::Negation => {
                 self.take_one();
                 let operator: UnaryOperator = token.into();
-                let expr = self.parse_expr()?;
-                Ok(Expr::Unary(operator, Box::new(expr)))
+                let inner_expr = self.parse_factor()?;
+                Ok(Expr::Unary(operator, Box::new(inner_expr)))
             }
             Token::OpenParen => {
                 self.take_one();
-                let expr = self.parse_expr()?;
+                let inner_expr = self.parse_expr(MIN_PREC)?;
                 self.expect(Token::CloseParen)?;
-                Ok(expr)
+                Ok(inner_expr)
             }
-            _ => Err(ParseError::MalformedExpression {
-                found: format!("{:?}", token),
-            }),
+            _ => Err(ParseError::MalformedFactor),
         }
+    }
+
+    fn parse_expr(&mut self, min_prec: usize) -> Result<Expr, ParseError> {
+        let mut left_expr = self.parse_factor()?;
+        let mut token = self.tokens.peek().ok_or(ParseError::UnexpectedEof)?.clone();
+
+        while token.is_binary_operator() && token.precedence() >= min_prec {
+            let operator: BinaryOperator = token.clone().into();
+            let _ = self.take_one();
+            let right_expr = self.parse_expr(token.precedence() + 1)?;
+            left_expr = Expr::Binary(operator, Box::new(left_expr), Box::new(right_expr));
+            match self.tokens.peek() {
+                Some(t) => {
+                    token = t.clone();
+                }
+                None => {
+                    break;
+                }
+            }
+        }
+
+        Ok(left_expr)
     }
 
     fn expect(&mut self, expected: Token<'src>) -> Result<(), ParseError> {
@@ -181,6 +215,42 @@ impl From<Token<'_>> for UnaryOperator {
     }
 }
 
+impl From<&Token<'_>> for UnaryOperator {
+    fn from(value: &Token<'_>) -> Self {
+        match value {
+            Token::BitwiseComplement => UnaryOperator::Complement,
+            Token::Negation => UnaryOperator::Negate,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<Token<'_>> for BinaryOperator {
+    fn from(value: Token<'_>) -> Self {
+        match value {
+            Token::Asterisk => BinaryOperator::Multiply,
+            Token::Percent => BinaryOperator::Remainder,
+            Token::Plus => BinaryOperator::Add,
+            Token::Negation => BinaryOperator::Subtract,
+            Token::ForwardSlash => BinaryOperator::Divide,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<&Token<'_>> for BinaryOperator {
+    fn from(value: &Token<'_>) -> Self {
+        match value {
+            Token::Asterisk => BinaryOperator::Multiply,
+            Token::Percent => BinaryOperator::Remainder,
+            Token::Plus => BinaryOperator::Add,
+            Token::Negation => BinaryOperator::Subtract,
+            Token::ForwardSlash => BinaryOperator::Divide,
+            _ => unreachable!(),
+        }
+    }
+}
+
 pub fn parse<'src>(tokens: Vec<Token<'src>>) -> Result<Program<'src>, ParseError> {
     let mut parser = Parser::new(tokens.into_iter());
     parser.parse_program()
@@ -211,5 +281,69 @@ mod tests {
                 }
             }
         )
+    }
+
+    #[test]
+    fn basic_add() {
+        let source = r"
+            int main(void) {
+                return 1 + 2;
+            }
+        ";
+
+        let tokens = lex(source).into_iter().flatten().collect();
+        let ast = parse(tokens).unwrap();
+
+        assert_eq!(
+            ast,
+            Program {
+                function_def: FunctionDef {
+                    name: "main".into(),
+                    body: Statement::Return(Expr::Binary(
+                        BinaryOperator::Add,
+                        Box::new(Expr::Constant(1)),
+                        Box::new(Expr::Constant(2))
+                    ))
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn complex_expr() {
+        let source = r"
+            int main(void) {
+                return 1 * 2 - 3 * (4 + 5);
+            }
+        ";
+
+        let tokens = lex(source).into_iter().flatten().collect();
+        let ast = parse(tokens).unwrap();
+
+        assert_eq!(
+            ast,
+            Program {
+                function_def: FunctionDef {
+                    name: "main".into(),
+                    body: Statement::Return(Expr::Binary(
+                        BinaryOperator::Subtract,
+                        Box::new(Expr::Binary(
+                            BinaryOperator::Multiply,
+                            Box::new(Expr::Constant(1)),
+                            Box::new(Expr::Constant(2))
+                        )),
+                        Box::new(Expr::Binary(
+                            BinaryOperator::Multiply,
+                            Box::new(Expr::Constant(3)),
+                            Box::new(Expr::Binary(
+                                BinaryOperator::Add,
+                                Box::new(Expr::Constant(4)),
+                                Box::new(Expr::Constant(5))
+                            ))
+                        ))
+                    )),
+                }
+            }
+        );
     }
 }

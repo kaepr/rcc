@@ -41,6 +41,14 @@ pub enum Token<'a> {
     OpenBrace,
     #[token("}")]
     CloseBrace,
+    #[token("+")]
+    Plus,
+    #[token("*")]
+    Asterisk,
+    #[token("/")]
+    ForwardSlash,
+    #[token("%")]
+    Percent,
     #[token(";")]
     Semicolon,
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| Cow::Borrowed(lex.slice()))]
@@ -49,6 +57,30 @@ pub enum Token<'a> {
     Constant(Cow<'a, str>),
     #[regex(r"[0-9]+[a-zA-Z_][a-zA-Z0-9_]*", invalid_identifier)]
     InvalidIdentifier,
+}
+
+impl Token<'_> {
+    pub fn precedence(self: &Self) -> usize {
+        match self {
+            Token::Asterisk => 50,
+            Token::ForwardSlash => 50,
+            Token::Percent => 50,
+            Token::Plus => 45,
+            Token::Negation => 45,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn is_binary_operator(self: &Self) -> bool {
+        match self {
+            Token::Asterisk
+            | Token::Plus
+            | Token::ForwardSlash
+            | Token::Negation
+            | Token::Percent => true,
+            _ => false,
+        }
+    }
 }
 
 pub fn lex<'a>(source: &'a str) -> Vec<Result<Token<'a>, LexError>> {

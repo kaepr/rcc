@@ -31,9 +31,24 @@ pub enum UnaryOperator {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Instruction<'src> {
-    Unary(UnaryOperator, Val<'src>, Val<'src>),
     Return(Val<'src>),
+    Unary(UnaryOperator, Val<'src>, Val<'src>),
+    Binary {
+        op: BinaryOperator,
+        src1: Val<'src>,
+        src2: Val<'src>,
+        dst: Val<'src>,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -49,6 +64,18 @@ fn convert_unop(unop: &parser::UnaryOperator) -> UnaryOperator {
     }
 }
 
+impl From<&parser::BinaryOperator> for BinaryOperator {
+    fn from(value: &parser::BinaryOperator) -> Self {
+        match value {
+            parser::BinaryOperator::Add => BinaryOperator::Add,
+            parser::BinaryOperator::Subtract => BinaryOperator::Subtract,
+            parser::BinaryOperator::Multiply => BinaryOperator::Multiply,
+            parser::BinaryOperator::Divide => BinaryOperator::Divide,
+            parser::BinaryOperator::Remainder => BinaryOperator::Remainder,
+        }
+    }
+}
+
 fn handle_expr<'src>(expr: &parser::Expr, instructions: &mut Vec<Instruction<'src>>) -> Val<'src> {
     match expr {
         parser::Expr::Constant(val) => Val::Constant(*val),
@@ -57,6 +84,19 @@ fn handle_expr<'src>(expr: &parser::Expr, instructions: &mut Vec<Instruction<'sr
             let dst = Val::Var(make_temporary().into());
             let tacky_op = convert_unop(unary_operator);
             instructions.push(Instruction::Unary(tacky_op, src, dst.clone()));
+            dst
+        }
+        parser::Expr::Binary(op, e1, e2) => {
+            let v1 = handle_expr(e1, instructions);
+            let v2 = handle_expr(e2, instructions);
+            let dst = Val::Var(make_temporary().into());
+            let op: BinaryOperator = op.into();
+            instructions.push(Instruction::Binary {
+                op: op,
+                src1: v1,
+                src2: v2,
+                dst: dst.clone(),
+            });
             dst
         }
     }

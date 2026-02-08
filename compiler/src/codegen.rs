@@ -1,4 +1,4 @@
-use crate::tacky;
+use crate::tacky::{self};
 use std::{borrow::Cow, collections::HashMap, vec};
 use thiserror::Error;
 
@@ -13,6 +13,13 @@ pub enum CodegenError {
 pub enum UnaryOperator {
     Neg,
     Not,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mult,
 }
 
 pub type Identifier<'src> = Cow<'src, str>;
@@ -38,17 +45,26 @@ pub enum Instruction<'src> {
         operator: UnaryOperator,
         operand: Operand<'src>,
     },
+    Binary {
+        operator: BinaryOperator,
+        operand1: Operand<'src>,
+        operand2: Operand<'src>,
+    },
+    Idiv(Operand<'src>),
+    Cdq,
     AllocateStack(isize),
     Ret,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Register {
     AX,
+    DX,
     R10,
+    R11,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Operand<'src> {
     Imm(isize),
     Reg(Register),
@@ -78,10 +94,24 @@ impl From<tacky::UnaryOperator> for UnaryOperator {
     }
 }
 
-fn handle_operand(op: tacky::Val) -> Operand {
-    match op {
-        tacky::Val::Constant(v) => Operand::Imm(v),
-        tacky::Val::Var(ident) => Operand::Pseudo(ident),
+impl From<tacky::BinaryOperator> for BinaryOperator {
+    fn from(value: tacky::BinaryOperator) -> Self {
+        type BinOp = tacky::BinaryOperator;
+        match value {
+            BinOp::Add => BinaryOperator::Add,
+            BinOp::Multiply => BinaryOperator::Mult,
+            BinOp::Subtract => BinaryOperator::Sub,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl<'src> From<tacky::Val<'src>> for Operand<'src> {
+    fn from(value: tacky::Val<'src>) -> Self {
+        match value {
+            tacky::Val::Constant(v) => Operand::Imm(v),
+            tacky::Val::Var(ident) => Operand::Pseudo(ident),
+        }
     }
 }
 
@@ -89,17 +119,62 @@ fn handle_instruction(instruction: tacky::Instruction) -> Vec<Instruction> {
     match instruction {
         tacky::Instruction::Unary(unary_operator, src, dst) => vec![
             Instruction::Mov {
-                src: handle_operand(src),
-                dst: handle_operand(dst.clone()),
+                src: src.into(),
+                dst: dst.clone().into(),
             },
             Instruction::Unary {
                 operator: unary_operator.into(),
-                operand: handle_operand(dst),
+                operand: dst.into(),
             },
         ],
+        tacky::Instruction::Binary {
+            op,
+            src1,
+            src2,
+            dst,
+        } => {
+            type BinOp = tacky::BinaryOperator;
+            match op {
+                BinOp::Divide => vec![
+                    Instruction::Mov {
+                        src: src1.into(),
+                        dst: Operand::Reg(Register::AX),
+                    },
+                    Instruction::Cdq,
+                    Instruction::Idiv(src2.into()),
+                    Instruction::Mov {
+                        src: Operand::Reg(Register::AX),
+                        dst: dst.into(),
+                    },
+                ],
+                BinOp::Remainder => vec![
+                    Instruction::Mov {
+                        src: src1.into(),
+                        dst: Operand::Reg(Register::AX),
+                    },
+                    Instruction::Cdq,
+                    Instruction::Idiv(src2.into()),
+                    Instruction::Mov {
+                        src: Operand::Reg(Register::DX),
+                        dst: dst.into(),
+                    },
+                ],
+                _ => vec![
+                    Instruction::Mov {
+                        src: src1.into(),
+                        dst: dst.clone().into(),
+                    },
+                    Instruction::Binary {
+                        operator: op.into(),
+                        operand1: src2.into(),
+                        operand2: dst.into(),
+                    },
+                ],
+            }
+        }
         tacky::Instruction::Return(val) => vec![
             Instruction::Mov {
-                src: handle_operand(val),
+                src: val.into(),
                 dst: Operand::Reg(Register::AX),
             },
             Instruction::Ret,
@@ -143,6 +218,18 @@ fn replace_pseudo_registers<'src>(
                 operator: operator,
                 operand: handle_pseudo_operand(operand, &mut hash_map, &mut stack_loc),
             },
+            Instruction::Binary {
+                operator,
+                operand1,
+                operand2,
+            } => Instruction::Binary {
+                operator: operator,
+                operand1: handle_pseudo_operand(operand1, &mut hash_map, &mut stack_loc),
+                operand2: handle_pseudo_operand(operand2, &mut hash_map, &mut stack_loc),
+            },
+            Instruction::Idiv(o) => {
+                Instruction::Idiv(handle_pseudo_operand(o, &mut hash_map, &mut stack_loc))
+            }
             other => other,
         })
         .collect();
@@ -165,6 +252,47 @@ fn fixup<'src>(instruction: Instruction<'src>) -> Vec<Instruction<'src>> {
             ],
             _ => vec![Instruction::Mov { src: src, dst: dst }],
         },
+        Instruction::Idiv(Operand::Imm(v)) => vec![
+            Instruction::Mov {
+                src: Operand::Imm(v),
+                dst: Operand::Reg(Register::R10),
+            },
+            Instruction::Idiv(Operand::Reg(Register::R10)),
+        ],
+        Instruction::Binary {
+            operator: op @ BinaryOperator::Add | op @ BinaryOperator::Sub,
+            operand1: op1 @ Operand::Stack(_),
+            operand2: op2 @ Operand::Stack(_),
+        } => vec![
+            Instruction::Mov {
+                src: op1,
+                dst: Operand::Reg(Register::R10),
+            },
+            Instruction::Binary {
+                operator: op,
+                operand1: Operand::Reg(Register::R10),
+                operand2: op2,
+            },
+        ],
+        Instruction::Binary {
+            operator: BinaryOperator::Mult,
+            operand1,
+            operand2: dst @ Operand::Stack(_),
+        } => vec![
+            Instruction::Mov {
+                src: dst.clone(),
+                dst: Operand::Reg(Register::R11),
+            },
+            Instruction::Binary {
+                operator: BinaryOperator::Mult,
+                operand1: operand1,
+                operand2: Operand::Reg(Register::R11),
+            },
+            Instruction::Mov {
+                src: Operand::Reg(Register::R11),
+                dst: dst,
+            },
+        ],
         other => vec![other],
     }
 }
@@ -193,6 +321,7 @@ mod tests {
     use super::*;
     use crate::lexer::lex;
     use crate::parser::parse;
+    use crate::tacky::tacky;
 
     #[test]
     fn program() {
